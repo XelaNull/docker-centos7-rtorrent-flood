@@ -32,11 +32,30 @@ RUN cd /root && wget https://www.rarlab.com/rar/rarlinux-x64-5.5.0.tar.gz && tar
 RUN rpm -Uvh https://mirror.webtatic.com/yum/el7/webtatic-release.rpm && \
     yum -y install mod_php72w php72w-opcache php72w-cli php72w-mysqli httpd
 
-RUN yum -y install rtorrent httpd unzip 
+RUN yum -y install rtorrent httpd unzip screen && adduser screen
 # mediainfo ffmpeg
 
 RUN git clone https://github.com/Novik/ruTorrent.git && chown -R apache:apache /ruTorrent/share/torrents && \
     chown -R apache:apache /ruTorrent/share/settings
+
+ADD rctorrent.rc /home/rtorrent/rtorrent.rc
+RUN chown rtorrent:rtorrent /home/rtorrent/rtorrent.rc && \
+    mkdir /srv/torrent && mkdir /srv/torrent/downloads && mkdir /srv/torrent/.session && \
+    chmod 775 -R /srv/torrent && chown rtorrent:rtorrent -R /srv/torrent && \
+    chown rtorrent:rtorrent /home/rtorrent/.rtorrent.rc
+
+
+# flood
+RUN yum install gcc-c++ make curl git -y && curl -sL https://rpm.nodesource.com/setup_8.x | bash -
+RUN yum install -y nodejs && \
+    cd /srv/torrent && git clone https://github.com/jfurrow/flood.git && \
+    cd flood && cp config.template.js config.js && \
+    sed -i "s|floodServerHost: '127.0.0.1'|floodServerHost: '0.0.0.0'|g" config.js && \
+    npm install && npm install -g node-gyp && npm run build && \
+    adduser flood && chown -R flood:flood /srv/torrent/flood/
+
+ADD start_rtorrent.sh /start_rtorrent.sh
+ADD start_flood.sh /start_flood.sh
 
 # Create supervisord.conf file
 RUN { \
@@ -53,7 +72,9 @@ RUN { \
   } | tee /gen_sup.sh && chmod a+x /gen_sup.sh && \
   { echo '[supervisord]';echo 'nodaemon=true';echo 'user=root';echo 'logfile=/var/log/supervisord'; echo; } | tee /etc/supervisord.conf && \  
     /gen_sup.sh syslog-ng "/usr/sbin/syslog-ng -F" >> /etc/supervisord.conf && \
-    /gen_sup.sh crond "/usr/sbin/crond -n" >> /etc/supervisord.conf
+    /gen_sup.sh crond "/usr/sbin/crond -n" >> /etc/supervisord.conf && \
+    /gen_sup.sh rtorrent "/start_rtorrent.sh" >> /etc/supervisord.conf && \
+    /gen_sup.sh flood "/start_flood.sh" >> /etc/supersvisord.conf
     
 # Ensure all packages are up-to-date, then fully clean out all cache
 RUN yum -y update && yum clean all && rm -rf /tmp/* && rm -rf /var/tmp/*
