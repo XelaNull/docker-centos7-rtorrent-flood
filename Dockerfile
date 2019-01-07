@@ -32,14 +32,15 @@ RUN cd /root && wget https://www.rarlab.com/rar/rarlinux-x64-5.5.0.tar.gz && tar
 RUN rpm -Uvh https://mirror.webtatic.com/yum/el7/webtatic-release.rpm && \
     yum -y install mod_php72w php72w-opcache php72w-cli php72w-mysqli httpd
 
-RUN yum -y install rtorrent httpd unzip screen && adduser screen
+RUN yum -y install rtorrent httpd unzip screen
 # mediainfo ffmpeg
 
 RUN git clone https://github.com/Novik/ruTorrent.git && chown -R apache:apache /ruTorrent/share/torrents && \
     chown -R apache:apache /ruTorrent/share/settings
 
-ADD rctorrent.rc /home/rtorrent/rtorrent.rc
-RUN chown rtorrent:rtorrent /home/rtorrent/rtorrent.rc && \
+RUN adduser rtorrent
+ADD rctorrent.rc /home/rtorrent/.rtorrent.rc
+RUN chown rtorrent:rtorrent /home/rtorrent/.rtorrent.rc && \
     mkdir /srv/torrent && mkdir /srv/torrent/downloads && mkdir /srv/torrent/.session && \
     chmod 775 -R /srv/torrent && chown rtorrent:rtorrent -R /srv/torrent && \
     chown rtorrent:rtorrent /home/rtorrent/.rtorrent.rc
@@ -69,12 +70,12 @@ RUN { \
     echo 'echo "startsecs=3";'; \
     echo 'echo "priority=1";'; \
     echo 'echo "";'; \
-  } | tee /gen_sup.sh && chmod a+x /gen_sup.sh && \
+  } | tee /gen_sup.sh && chmod a+x /*.sh && \
   { echo '[supervisord]';echo 'nodaemon=true';echo 'user=root';echo 'logfile=/var/log/supervisord'; echo; } | tee /etc/supervisord.conf && \  
     /gen_sup.sh syslog-ng "/usr/sbin/syslog-ng -F" >> /etc/supervisord.conf && \
     /gen_sup.sh crond "/usr/sbin/crond -n" >> /etc/supervisord.conf && \
     /gen_sup.sh rtorrent "/start_rtorrent.sh" >> /etc/supervisord.conf && \
-    /gen_sup.sh flood "/start_flood.sh" >> /etc/supersvisord.conf
+    /gen_sup.sh flood "/start_flood.sh" >> /etc/supervisord.conf
     
 # Ensure all packages are up-to-date, then fully clean out all cache
 RUN yum -y update && yum clean all && rm -rf /tmp/* && rm -rf /var/tmp/*
