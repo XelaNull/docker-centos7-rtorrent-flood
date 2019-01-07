@@ -53,7 +53,7 @@ RUN { \
   } | tee /gen_sup.sh && chmod a+x /gen_sup.sh && \
   { echo '[supervisord]';echo 'nodaemon=true';echo 'user=root';echo 'logfile=/var/log/supervisord'; echo; } | tee /etc/supervisord.conf && \  
     /gen_sup.sh syslog-ng "/usr/sbin/syslog-ng -F" >> /etc/supervisord.conf && \
-    /gen_sup.sh crond "/usr/sbin/crond -n" >> /etc/supervisord.conf && \
+    /gen_sup.sh crond "/usr/sbin/crond -n" >> /etc/supervisord.conf
     
 # Ensure all packages are up-to-date, then fully clean out all cache
 RUN yum -y update && yum clean all && rm -rf /tmp/* && rm -rf /var/tmp/*
