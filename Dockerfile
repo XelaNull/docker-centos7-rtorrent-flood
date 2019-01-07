@@ -35,8 +35,8 @@ RUN rpm -Uvh https://mirror.webtatic.com/yum/el7/webtatic-release.rpm && \
 RUN yum -y install rtorrent httpd unzip screen
 # mediainfo ffmpeg
 
-RUN git clone https://github.com/Novik/ruTorrent.git && chown -R apache:apache /ruTorrent/share/torrents && \
-    chown -R apache:apache /ruTorrent/share/settings
+#RUN git clone https://github.com/Novik/ruTorrent.git && chown -R apache:apache /ruTorrent/share/torrents && \
+#    chown -R apache:apache /ruTorrent/share/settings
 
 RUN adduser rtorrent
 ADD rctorrent.rc /home/rtorrent/.rtorrent.rc
