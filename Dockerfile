@@ -21,9 +21,22 @@ RUN yum -y install epel-release yum-utils
 #    echo "done"; \
 #    } | tee /start-mysqld.sh && chmod a+x /start-mysqld.sh 
 
-    # Install all other YUM-based packages
+# Install all other YUM-based packages
 RUN yum -y install bash wget supervisor vim-enhanced net-tools perl make gcc-c++ \
     rsync nc cronie openssh sudo syslog-ng mlocate git logrotate
+
+# Install rar & unrar
+RUN cd /root && wget https://www.rarlab.com/rar/rarlinux-x64-5.5.0.tar.gz && tar -zxf rarlinux-x64-5.5.0.tar.gz && cd rar && cp rar unrar /usr/local/bin/
+
+# Install Webtatic YUM REPO, to provide PHP7
+RUN rpm -Uvh https://mirror.webtatic.com/yum/el7/webtatic-release.rpm && \
+    yum -y install mod_php72w php72w-opcache php72w-cli php72w-mysqli httpd
+
+RUN yum -y install rtorrent httpd unzip 
+# mediainfo ffmpeg
+
+RUN git clone https://github.com/Novik/ruTorrent.git && chown -R apache:apache /ruTorrent/share/torrents && \
+    chown -R apache:apache /ruTorrent/share/settings
 
 # Create supervisord.conf file
 RUN { \
@@ -46,6 +59,6 @@ RUN { \
 RUN yum -y update && yum clean all && rm -rf /tmp/* && rm -rf /var/tmp/*
 
 # Define the downloads directory as an externally mounted volume
-#VOLUME ["/var/www/html/downloads"]
+VOLUME ["/config","/downloads"]
 # Set to start the supervisor daemon on bootup
 ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
