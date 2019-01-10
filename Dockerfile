@@ -4,7 +4,7 @@ FROM centos:7
 #Currently works with a blank root MariaDB password (BAD IDEA)
 ENV TIMEZONE="America/New_York"
 ENV DIR_INCOMING="/var/www/html/incomplete"
-ENV DIR_OUTGOING="/var/www/html/outgoing"
+ENV DIR_OUTGOING="/var/www/html/complete"
 ENV RTORRENT_PORT="5000"
 ENV DELETE_AFTER_HOURS="75"
 ENV DELETE_AFTER_RATIO="1.0"
@@ -14,19 +14,24 @@ ENV USE_PEX="no"
 
 # First install EPEL & initial packages
 RUN yum -y install epel-release wget vim-enhanced net-tools perl make gcc-c++ rsync && \
-    yum -y install nc cronie openssh sudo mlocate git logrotate screen
+    yum -y install nc cronie openssh sudo mlocate git logrotate screen file
     
-# Install Webtatic YUM REPO, to provide PHP7
+# Install Webtatic YUM REPO + PHP7, 
 RUN wget https://mirror.webtatic.com/yum/el7/webtatic-release.rpm && yum -y localinstall webtatic-release.rpm && \
     yum -y install supervisor syslog-ng mod_php72w php72w-opcache php72w-cli rtorrent unzip mediainfo httpd && \
-    rm -rf /etc/httpd/conf.d/welcome.conf && { \
+    rm -rf /etc/httpd/conf.d/welcome.conf
+    
+# Drop in place the PHP file to scan for completed files to provide the URL to
+RUN { \
     echo '<?php'; \
     echo "\$display = Array ('img','mp4','avi','mkv','m2ts','wmv','iso','divx','mpg','m4v');"; \
-    echo "foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator(basename(${DIR_OUTGOING}))) as \$file)"; \
+    echo "foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator(basename(\"${DIR_OUTGOING}\"))) as \$file)"; \
     echo "{ if(basename($file)=='..' || basename($file)=='.') continue; if (in_array(strtolower(array_pop(explode('.', \$file))), \$display))"; \
     echo 'echo "http://$_SERVER[HTTP_HOST]/". $file . "\n<br/>"; }'; \
-    echo '?>'; } | tee /var/www/html/scan.php && touch /var/www/html/index.php && \
-    sed -i 's|system();|unix-stream("/dev/log");|g' /etc/syslog-ng/syslog-ng.conf
+    echo '?>'; } | tee /var/www/html/scan.php && touch /var/www/html/index.php
+
+# Configure Syslog-NG for use in a Docker container
+RUN sed -i 's|system();|unix-stream("/dev/log");|g' /etc/syslog-ng/syslog-ng.conf
 
 # Install rar, unrar, and unrarall
 RUN cd /root && wget https://www.rarlab.com/rar/rarlinux-x64-5.5.0.tar.gz && \
@@ -57,17 +62,16 @@ RUN adduser rtorrent && { \
     echo 'method.insert = d.move_to_complete, simple, "execute=mkdir,-p,$argument.1=; execute=cp,-rp,$argument.0=,$argument.1=; d.stop=; d.directory.set=$argument.1=; d.start=;d.save_full_session=; execute=rm, -r, $argument.0="'; \
     echo 'method.set_key = event.download.finished,move_complete,"d.move_to_complete=$d.get_data_full_path=,$d.get_finished_dir="'; \
     } | tee /home/rtorrent/.rtorrent.rc && chown rtorrent:rtorrent /home/rtorrent/.rtorrent.rc && \
-    mkdir /srv/torrent && mkdir /srv/torrent/.session && \
-    chmod 775 -R /srv/torrent && chown rtorrent:rtorrent -R /srv/torrent && \
-    mkdir ${DIR_INCOMING} && chown apache:rtorrent ${DIR_INCOMING} -R && chmod 775 ${DIR_INCOMING} && \
-    mkdir ${DIR_OUTGOING} && chown apache:rtorrent ${DIR_OUTGOING} -R && chmod 775 ${DIR_OUTGOING}
+    mkdir /srv/torrent && mkdir /srv/torrent/.session && chmod 775 -R /srv/torrent && chown rtorrent:rtorrent -R /srv/torrent && \
+    mkdir ${DIR_INCOMING} && mkdir ${DIR_OUTGOING} && chown apache:rtorrent ${DIR_INCOMING} -R && chmod 775 ${DIR_INCOMING} && \
+    chown apache:rtorrent ${DIR_OUTGOING} -R && chmod 775 ${DIR_OUTGOING}
 
 # Install Pyrocore, to get rtcontrol to stop torrents from seeding after xxx days
 RUN cd /home/rtorrent && mkdir -p bin pyroscope && git clone "https://github.com/pyroscope/pyrocore.git" pyroscope && \
-chown rtorrent /home/rtorrent -R && sudo -u rtorrent /home/rtorrent/pyroscope/update-to-head.sh 
+    chown rtorrent /home/rtorrent -R && sudo -u rtorrent /home/rtorrent/pyroscope/update-to-head.sh 
 
 # flood
- RUN curl -sL https://rpm.nodesource.com/setup_11.x | bash - && yum install -y nodejs && \
+RUN curl -sL https://rpm.nodesource.com/setup_11.x | bash - && yum install -y nodejs && \
     cd /srv/torrent && git clone https://github.com/jfurrow/flood.git && \
     cd flood && cp config.template.js config.js && \
     sed -i "s|floodServerHost: '127.0.0.1'|floodServerHost: '0.0.0.0'|g" config.js && \
@@ -75,14 +79,20 @@ chown rtorrent /home/rtorrent -R && sudo -u rtorrent /home/rtorrent/pyroscope/up
     adduser flood && chown -R flood:flood /srv/torrent/flood/ && \
     { \
     echo '#!/bin/bash'; \
+    echo "chown apache:rtorrent ${DIR_INCOMING} -R && chmod 775 ${DIR_INCOMING}"; \
+    echo "chown apache:rtorrent ${DIR_OUTGOING} -R && chmod 775 ${DIR_OUTGOING}"; \
     echo 'cd /srv/torrent/flood/ && /usr/bin/npm start && while true; do sleep 60; done'; \
     } | tee /start_flood.sh
-    
+
+# Create Cron start script    
 RUN { \
     echo '#!/bin/bash'; \
     echo 'sleep 30 && /usr/sbin/crond -n'; \
     } | tee /start_crond.sh    
     
+# Compile cksfv
+RUN cd /root && git clone https://github.com/vadmium/cksfv.git && cd cksfv && ./configure && make && make install
+      
 # Create supervisord.conf file
 RUN { echo '#!/bin/bash'; \
     echo 'echo "[program:$1]";'; echo 'echo "process_name=$1";'; \
@@ -97,8 +107,9 @@ RUN { echo '#!/bin/bash'; \
     /gen_sup.sh httpd "/usr/sbin/apachectl -D FOREGROUND" >> /etc/supervisord.conf && \
     /gen_sup.sh crond "/start_crond.sh" >> /etc/supervisord.conf
     
-RUN echo "*/1 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_HOURS}h is_complete=y [ NOT up=+0 ] --cull --yes" > /etc/cron.d/rtorrent && \
-    echo "*/1 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_RATIO_REQ_SEEDTIME}h ratio=+${DELETE_AFTER_RATIO} is_complete=y [ NOT up=+0 ] --cull --yes" >> /etc/cron.d/rtorrent
+RUN echo "0 * * * * rtorrent /usr/local/sbin/unrarall ${DIR_OUTGOING}" > /etc/cron.d/rtorrent && \
+    echo "30 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_HOURS}h is_complete=y [ NOT up=+0 ] --cull --yes" >> /etc/cron.d/rtorrent && \
+    echo "35 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_RATIO_REQ_SEEDTIME}h ratio=+${DELETE_AFTER_RATIO} is_complete=y [ NOT up=+0 ] --cull --yes" >> /etc/cron.d/rtorrent
     
 # Ensure all packages are up-to-date, then fully clean out all cache
 RUN yum -y update && yum clean all && rm -rf /tmp/* && rm -rf /var/tmp/*
