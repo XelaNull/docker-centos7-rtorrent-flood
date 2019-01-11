@@ -63,8 +63,8 @@ RUN adduser rtorrent && { \
     echo 'method.set_key = event.download.finished,move_complete,"d.move_to_complete=$d.get_data_full_path=,$d.get_finished_dir="'; \
     } | tee /home/rtorrent/.rtorrent.rc && chown rtorrent:rtorrent /home/rtorrent/.rtorrent.rc && \
     mkdir /srv/torrent && mkdir /srv/torrent/.session && chmod 775 -R /srv/torrent && chown rtorrent:rtorrent -R /srv/torrent && \
-    mkdir ${DIR_INCOMING} && mkdir ${DIR_OUTGOING} && chown apache:rtorrent ${DIR_INCOMING} -R && chmod 775 ${DIR_INCOMING} && \
-    chown apache:rtorrent ${DIR_OUTGOING} -R && chmod 775 ${DIR_OUTGOING}
+    mkdir ${DIR_INCOMING} && chown apache:rtorrent ${DIR_INCOMING} -R && chmod 775 ${DIR_INCOMING} && \
+    mkdir ${DIR_OUTGOING} && chown apache:rtorrent ${DIR_OUTGOING} -R && chmod 775 ${DIR_OUTGOING}
 
 # Install Pyrocore, to get rtcontrol to stop torrents from seeding after xxx days
 RUN cd /home/rtorrent && mkdir -p bin pyroscope && git clone "https://github.com/pyroscope/pyrocore.git" pyroscope && \
@@ -79,9 +79,10 @@ RUN curl -sL https://rpm.nodesource.com/setup_11.x | bash - && yum install -y no
     adduser flood && chown -R flood:flood /srv/torrent/flood/ && \
     { \
     echo '#!/bin/bash'; \
+    echo 'cd /srv/torrent/flood/ && /usr/bin/npm start && while true; do '; \
     echo "chown apache:rtorrent ${DIR_INCOMING} -R && chmod 775 ${DIR_INCOMING}"; \
     echo "chown apache:rtorrent ${DIR_OUTGOING} -R && chmod 775 ${DIR_OUTGOING}"; \
-    echo 'cd /srv/torrent/flood/ && /usr/bin/npm start && while true; do sleep 60; done'; \
+    echo 'sleep 60; done'; \
     } | tee /start_flood.sh
 
 # Create Cron start script    
@@ -108,7 +109,7 @@ RUN { echo '#!/bin/bash'; \
     /gen_sup.sh crond "/start_crond.sh" >> /etc/supervisord.conf
     
 RUN echo "0 * * * * rtorrent /usr/local/sbin/unrarall ${DIR_OUTGOING}" > /etc/cron.d/rtorrent && \
-    echo "30 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_HOURS}h is_complete=y [ NOT up=+0 ] --cull --yes" >> /etc/cron.d/rtorrent && \
+    echo "30 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_HOURS}h is_complete=y [ NOT up=+0 ] --cull --yes" > /etc/cron.d/rtorrent && \
     echo "35 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_RATIO_REQ_SEEDTIME}h ratio=+${DELETE_AFTER_RATIO} is_complete=y [ NOT up=+0 ] --cull --yes" >> /etc/cron.d/rtorrent
     
 # Ensure all packages are up-to-date, then fully clean out all cache
