@@ -70,20 +70,23 @@ RUN adduser rtorrent && { \
 RUN cd /home/rtorrent && mkdir -p bin pyroscope && git clone "https://github.com/pyroscope/pyrocore.git" pyroscope && \
     chown rtorrent /home/rtorrent -R && sudo -u rtorrent /home/rtorrent/pyroscope/update-to-head.sh 
 
+# NodeJS & npm
+RUN curl -sL https://rpm.nodesource.com/setup_11.x | bash - && yum install -y nodejs
 # flood
-RUN curl -sL https://rpm.nodesource.com/setup_11.x | bash - && yum install -y nodejs && \
-    cd /srv/torrent && git clone https://github.com/jfurrow/flood.git && \
+RUN cd /srv/torrent && git clone https://github.com/jfurrow/flood.git && \
     cd flood && cp config.template.js config.js && \
     sed -i "s|floodServerHost: '127.0.0.1'|floodServerHost: '0.0.0.0'|g" config.js && \
-    npm install && npm install -g node-gyp && npm run build && \
+    npm install && npm install -g node-gyp && npm install --save semver && npm run build && \
     adduser flood && chown -R flood:flood /srv/torrent/flood/ && \
     { \
     echo '#!/bin/bash'; \
-    echo 'cd /srv/torrent/flood/ && /usr/bin/npm start && while true; do '; \
-    echo "chown apache:rtorrent ${DIR_INCOMING} -R && chmod 775 ${DIR_INCOMING}"; \
-    echo "chown apache:rtorrent ${DIR_OUTGOING} -R && chmod 775 ${DIR_OUTGOING}"; \
-    echo 'sleep 60; done'; \
+    echo "sudo chown apache:rtorrent ${DIR_INCOMING} -R && sudo chmod 775 ${DIR_INCOMING}"; \
+    echo "sudo chown apache:rtorrent ${DIR_OUTGOING} -R && sudo chmod 775 ${DIR_OUTGOING}"; \
+    echo 'cd /srv/torrent/flood/ && /usr/bin/npm start'; \
     } | tee /start_flood.sh
+#    echo 'while :'; \
+#    echo 'do'; \
+#    echo 'sleep 60; done'; \
 
 # Create Cron start script    
 RUN { \
@@ -104,9 +107,10 @@ RUN { echo '#!/bin/bash'; \
   { echo '[supervisord]';echo 'nodaemon=true';echo 'user=root';echo 'logfile=/var/log/supervisord'; } | tee /etc/supervisord.conf && \  
     /gen_sup.sh syslog-ng "/usr/sbin/syslog-ng --no-caps -F -p /var/run/syslogd.pid" >> /etc/supervisord.conf && \
     /gen_sup.sh rtorrent "sudo -u rtorrent /usr/bin/rtorrent" >> /etc/supervisord.conf && \
-    /gen_sup.sh flood "sudo -u flood /start_flood.sh" >> /etc/supervisord.conf && \
     /gen_sup.sh httpd "/usr/sbin/apachectl -D FOREGROUND" >> /etc/supervisord.conf && \
-    /gen_sup.sh crond "/start_crond.sh" >> /etc/supervisord.conf
+    /gen_sup.sh crond "/start_crond.sh" >> /etc/supervisord.conf && \
+    /gen_sup.sh flood "sudo -u flood /start_flood.sh" >> /etc/supervisord.conf
+
     
 RUN echo "0 * * * * rtorrent /usr/local/sbin/unrarall ${DIR_OUTGOING}" > /etc/cron.d/rtorrent && \
     echo "30 * * * * rtorrent /home/rtorrent/bin/rtcontrol --cron seedtime=+${DELETE_AFTER_HOURS}h is_complete=y [ NOT up=+0 ] --cull --yes" > /etc/cron.d/rtorrent && \
@@ -114,6 +118,8 @@ RUN echo "0 * * * * rtorrent /usr/local/sbin/unrarall ${DIR_OUTGOING}" > /etc/cr
     
 # Ensure all packages are up-to-date, then fully clean out all cache
 RUN yum -y update && yum clean all && rm -rf /tmp/* && rm -rf /var/tmp/*
+
+VOLUME ["/var/www/html/complete"]
 
 # Set to start the supervisor daemon on bootup
 ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
