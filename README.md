@@ -1,5 +1,11 @@
 # Dockerfile for CentOS 7.6 + PHP 7.2 + rTorrent + Flood + Pyrocore
 
+## I've abandoned this project
+I've abandoned this project in favor of another nearly identical project. Please use the newer project below instead of this one:
+
+https://github.com/XelaNull/docker-c7-rtorrent-flood
+
+
 The combination provided by this project is one of the better seedbox configurations. The Flood UI is modern and really smooth looking. Backing it up is rtorrent, with PEX & DHT disabled by default. If you wish to enable them, the option is right inside the single Dockerfile. I'm not a fan of multiple files and prefer to keep things in a single Dockerfile.
 
 The goal of this project is to provide a single Dockerfile that will create a Docker container that is comprised of:
